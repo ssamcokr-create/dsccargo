@@ -2,7 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { KAKAO_BLANK_TEMPLATE } from '../data/standards';
 import { DispatchEntry } from '../types/dispatch';
-import { generateCarrierBatchOrderText, generateKakaoRequestText } from '../utils/dispatchEngine';
+import {
+  formatMonthlyNo,
+  generateCarrierBatchOrderText,
+  generateKakaoRequestText,
+} from '../utils/dispatchEngine';
 
 interface KakaoAndBatchViewProps {
   entries: DispatchEntry[];
@@ -111,7 +115,7 @@ export const KakaoAndBatchView: React.FC<KakaoAndBatchViewProps> = ({
             >
               {entries.map((entry) => (
                 <option key={entry.id} value={entry.id}>
-                  NO.{entry.no} {entry.requester} ({entry.loadingDate})
+                  {formatMonthlyNo(entry)} {entry.requester} ({entry.loadingDate})
                 </option>
               ))}
             </select>

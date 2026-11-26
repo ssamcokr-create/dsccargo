@@ -33,6 +33,131 @@ export function formatShortTonnage(tonnage: string, bodyType: string): string {
   return `${tonnage} ${shortBody}`.trim();
 }
 
+export function getDispatchMonthKey(
+  entry: Pick<DispatchEntry, 'loadingDate' | 'requestDate'>
+): string {
+  const raw = (entry.loadingDate || entry.requestDate || '').trim();
+  if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7);
+  return '미지정';
+}
+
+export function formatDispatchMonthLabel(
+  entry: Pick<DispatchEntry, 'loadingDate' | 'requestDate'>
+): string {
+  const key = getDispatchMonthKey(entry);
+  if (key === '미지정') return '미지정';
+  return `${key.slice(2, 4)}.${key.slice(5, 7)}`;
+}
+
+export function formatMonthlyNo(
+  entry: Pick<DispatchEntry, 'no' | 'loadingDate' | 'requestDate'>
+): string {
+  return `${formatDispatchMonthLabel(entry)}-${entry.no}`;
+}
+
+function parseConsolidatedRef(
+  confirmedTonnage: string
+): { monthLabel?: string; targetNo: number } | null {
+  const match = confirmedTonnage.trim().match(/^합차\((?:(\d{2}\.\d{2}|미지정)-)?NO\.(\d+)\)$/);
+  if (!match) return null;
+  return {
+    monthLabel: match[1] || undefined,
+    targetNo: Number(match[2]),
+  };
+}
+
+export function formatConsolidatedTonnage(
+  entry: Pick<DispatchEntry, 'loadingDate' | 'requestDate'>,
+  anchor: Pick<DispatchEntry, 'no' | 'loadingDate' | 'requestDate'>
+): string {
+  if (getDispatchMonthKey(entry) === getDispatchMonthKey(anchor)) {
+    return `합차(NO.${anchor.no})`;
+  }
+  return `합차(${formatDispatchMonthLabel(anchor)}-NO.${anchor.no})`;
+}
+
+export function doesConsolidatedMatchAnchor(
+  consolidatedEntry: DispatchEntry,
+  anchorEntry: DispatchEntry
+): boolean {
+  if (consolidatedEntry.id === anchorEntry.id) return false;
+  const parsed = parseConsolidatedRef(consolidatedEntry.confirmedTonnage);
+  if (!parsed || parsed.targetNo !== anchorEntry.no) return false;
+  if (parsed.monthLabel) {
+    return parsed.monthLabel === formatDispatchMonthLabel(anchorEntry);
+  }
+  return getDispatchMonthKey(consolidatedEntry) === getDispatchMonthKey(anchorEntry);
+}
+
+export function renumberDispatchesByMonth(entries: DispatchEntry[]): DispatchEntry[] {
+  // Capture existing anchor entry IDs before renumbering so 합차(NO.X) pointers stay valid
+  const anchorIdByEntryId = new Map<string, string>();
+  for (const entry of entries) {
+    const parsed = parseConsolidatedRef(entry.confirmedTonnage);
+    if (!parsed) continue;
+    const targetMonthLabel = parsed.monthLabel || formatDispatchMonthLabel(entry);
+    const exactAnchor = entries.find(
+      (candidate) =>
+        candidate.id !== entry.id &&
+        candidate.no === parsed.targetNo &&
+        formatDispatchMonthLabel(candidate) === targetMonthLabel
+    );
+    const fallbackAnchor =
+      exactAnchor ||
+      entries.find((candidate) => candidate.id !== entry.id && candidate.no === parsed.targetNo);
+    if (fallbackAnchor) {
+      anchorIdByEntryId.set(entry.id, fallbackAnchor.id);
+    }
+  }
+
+  // Group entries by month key (YYYY-MM) while preserving relative order inside each month
+  const grouped = new Map<string, DispatchEntry[]>();
+  for (const entry of entries) {
+    const monthKey = getDispatchMonthKey(entry);
+    const bucket = grouped.get(monthKey);
+    if (bucket) {
+      bucket.push(entry);
+    } else {
+      grouped.set(monthKey, [entry]);
+    }
+  }
+
+  const sortedMonthKeys = Array.from(grouped.keys()).sort((a, b) => {
+    if (a === '미지정') return 1;
+    if (b === '미지정') return -1;
+    return a.localeCompare(b);
+  });
+
+  const renumbered: DispatchEntry[] = [];
+  for (const monthKey of sortedMonthKeys) {
+    const bucket = grouped.get(monthKey) || [];
+    bucket.forEach((entry, idx) => {
+      renumbered.push({
+        ...entry,
+        no: idx + 1,
+      });
+    });
+  }
+
+  const byId = new Map(renumbered.map((e) => [e.id, e]));
+  return renumbered.map((entry) => {
+    const parsed = parseConsolidatedRef(entry.confirmedTonnage);
+    if (!parsed) return entry;
+    const anchorId = anchorIdByEntryId.get(entry.id);
+    const anchor = anchorId ? byId.get(anchorId) : undefined;
+    if (!anchor) {
+      return {
+        ...entry,
+        confirmedTonnage: '검증대기',
+      };
+    }
+    return {
+      ...entry,
+      confirmedTonnage: formatConsolidatedTonnage(entry, anchor),
+    };
+  });
+}
+
 export function calculateRecommendedTonnage(
   pltCount: number,
   jigSpec: string,
@@ -286,9 +411,10 @@ export function detectRouteOverlaps(entries: DispatchEntry[]): Record<string, Ov
           : 'waypoint_route';
 
         const dayLabel = dayDiff === 0 ? '동일 일자' : `±1일(${other.loadingDate})`;
+        const otherLabel = `${formatDispatchMonthLabel(other)}-NO.${other.no}`;
         const suggestion = sameOriginDest
-          ? `NO.${other.no}(${other.requester})와 ${dayLabel} 동일 상·하차지 → 합차·혼적 검토`
-          : `NO.${other.no}(${other.requester})와 ${dayLabel} 경유 노선 중복 → 통합 배차 검토`;
+          ? `${otherLabel}(${other.requester})와 ${dayLabel} 동일 상·하차지 → 합차·혼적 검토`
+          : `${otherLabel}(${other.requester})와 ${dayLabel} 경유 노선 중복 → 통합 배차 검토`;
 
         candidates.push({
           targetId: other.id,
@@ -304,9 +430,7 @@ export function detectRouteOverlaps(entries: DispatchEntry[]): Record<string, Ov
     }
 
     const isConsolidated = current.confirmedTonnage.startsWith('합차');
-    const isAnchorOfConsolidated = entries.some(
-      (e) => e.id !== current.id && e.confirmedTonnage === `합차(NO.${current.no})`
-    );
+    const isAnchorOfConsolidated = entries.some((e) => doesConsolidatedMatchAnchor(e, current));
 
     let status: OverlapAnalysis['status'] = '정상';
     if (isConsolidated) {
@@ -317,8 +441,8 @@ export function detectRouteOverlaps(entries: DispatchEntry[]): Record<string, Ov
         const partner = entries.find((e) => e.id === c.targetId);
         if (!partner) return true;
         const mergedTogether =
-          partner.confirmedTonnage === `합차(NO.${current.no})` ||
-          current.confirmedTonnage === `합차(NO.${partner.no})`;
+          doesConsolidatedMatchAnchor(partner, current) ||
+          doesConsolidatedMatchAnchor(current, partner);
         return !mergedTogether;
       });
 
@@ -397,6 +521,7 @@ export function generateKakaoRequestText(entry: Partial<DispatchEntry>): string 
   const weightText = entry.totalWeightKg ? entry.totalWeightKg.toLocaleString() : '  ';
   const bodyType = entry.requestedBodyType || '카고';
   const ton = (entry.requestedTonnage || '').replace('톤', '').trim();
+  const vCount = entry.vehicleCount ?? 1;
 
   return `[선행기술팀 배차 요청] (익일 배차 전일 15:00 마감)
 1) 요청자 / 연락처 : ${requesterLine}
@@ -408,7 +533,7 @@ export function generateKakaoRequestText(entry: Partial<DispatchEntry>): string 
 7) 품목 및 적재 물량 (필수 기재) : ${entry.itemName || ''}
   - 부품 (1100×1100 PLT) : ${pltCount} 매 (총 중량 약 ${hasJig ? '' : weightText} kg)
   - 지그·설비 (가로×세로×높이) : ${hasJig ? entry.jigSpec : '-'} mm / ${hasJig ? (entry.jigQty || 1) : 0} 대 (총 중량 약 ${weightText} kg)
-8) 차종 / 요청 톤수 : ${bodyType} / ${ton}톤 ※ 4 PLT 이하 5톤 요청 불가
+8) 차종 / 요청 톤수 : ${bodyType} / ${ton}톤 (${vCount}대) ※ 4 PLT 이하 5톤 요청 불가
 9) 상·하차 방식 및 특이사항 : ${entry.loadingMethod || '지게차'}${entry.notes ? ` (${entry.notes})` : ''}`;
 }
 
@@ -525,14 +650,16 @@ export function generateCarrierBatchOrderText(
   const primaryEntries = dayEntries.filter((e) => !e.confirmedTonnage.startsWith('합차('));
   const mergedEntries = entries.filter((e) => e.confirmedTonnage.startsWith('합차('));
 
+  const totalVehicles = primaryEntries.reduce((sum, e) => sum + (e.vehicleCount ?? 1), 0);
+
   const lines: string[] = [
     `[운송사 배차발주] 선행기술팀 일괄 배차 요청 (${targetLoadingDate} 상차분)`,
-    `※ 총 발주 차량: ${primaryEntries.length}대 (합차 통합 ${mergedEntries.filter((m) => primaryEntries.some((p) => m.confirmedTonnage === `합차(NO.${p.no})`)).length}건 포함)`,
+    `※ 총 발주 차량: ${totalVehicles}대 (합차 통합 ${mergedEntries.filter((m) => primaryEntries.some((p) => doesConsolidatedMatchAnchor(m, p))).length}건 포함)`,
     '----------------------------------------',
   ];
 
   primaryEntries.forEach((entry, idx) => {
-    const attached = mergedEntries.filter((m) => m.confirmedTonnage === `합차(NO.${entry.no})`);
+    const attached = mergedEntries.filter((m) => doesConsolidatedMatchAnchor(m, entry));
     const route =
       entry.waypoints && entry.waypoints !== '-'
         ? `${entry.origin} → [경유: ${entry.waypoints}] → ${entry.destination}`
@@ -545,9 +672,10 @@ export function generateCarrierBatchOrderText(
 
     const totalPlt = entry.pltCount + attached.reduce((s, a) => s + a.pltCount, 0);
     const totalKg = entry.totalWeightKg + attached.reduce((s, a) => s + a.totalWeightKg, 0);
+    const countLabel = `${entry.vehicleCount ?? 1}대`;
 
     lines.push(
-      `[${idx + 1}] ${vehicleLabel} / ${entry.loadingTime || '시간협의'} 상차 (${entry.loadingMethod})`
+      `[${idx + 1}] ${vehicleLabel} (${countLabel}) / ${entry.loadingTime || '시간협의'} 상차 (${entry.loadingMethod})`
     );
     lines.push(` - 노선: ${route}`);
     lines.push(
@@ -558,7 +686,7 @@ export function generateCarrierBatchOrderText(
     if (attached.length > 0) {
       attached.forEach((m) => {
         lines.push(
-          `   └ [합차 NO.${m.no}] ${m.itemName} (${m.pltCount}PLT, ${m.totalWeightKg}kg / ${m.requester})`
+          `   └ [합차 ${formatMonthlyNo(m)}] ${m.itemName} (${m.pltCount}PLT, ${m.totalWeightKg}kg / ${m.requester})`
         );
       });
     }
@@ -590,6 +718,7 @@ export function exportDispatchesToCsv(
     '경유지',
     '도착지',
     '요청톤수',
+    '차량대수',
     '권장톤수(자동산출)',
     '확정톤수',
     '중복/합차체크(±1일 자동감지)',
@@ -615,7 +744,7 @@ export function exportDispatchesToCsv(
     );
     const overlap = overlapMap[e.id]?.status || '정상';
     return [
-      e.no,
+      formatMonthlyNo(e),
       e.requestDate,
       e.loadingDate,
       e.requester,
@@ -628,6 +757,7 @@ export function exportDispatchesToCsv(
       e.waypoints,
       e.destination,
       formatShortTonnage(e.requestedTonnage, e.requestedBodyType),
+      `${e.vehicleCount ?? 1}대`,
       rec.recommendedTonnage,
       e.confirmedTonnage,
       overlap,

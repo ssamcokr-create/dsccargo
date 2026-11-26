@@ -15,6 +15,8 @@ import {
   calculateRecommendedTonnage,
   detectRouteOverlaps,
   exportDispatchesToCsv,
+  formatConsolidatedTonnage,
+  renumberDispatchesByMonth,
 } from './utils/dispatchEngine';
 
 type ActiveView = 'ledger' | 'standards' | 'kakao_batch';
@@ -48,12 +50,14 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return renumberDispatchesByMonth(parsed);
+        }
       }
     } catch {
       // Ignore storage error
     }
-    return INITIAL_DISPATCHES;
+    return renumberDispatchesByMonth(INITIAL_DISPATCHES);
   });
 
   const [activeView, setActiveView] = useState<ActiveView>('ledger');
@@ -129,24 +133,25 @@ export default function App() {
   const handleSaveEntry = (data: Omit<DispatchEntry, 'id' | 'no'>, existingId?: string) => {
     if (existingId) {
       setEntries((prev) =>
-        prev.map((item) => (item.id === existingId ? { ...item, ...data } : item))
+        renumberDispatchesByMonth(
+          prev.map((item) => (item.id === existingId ? { ...item, ...data } : item))
+        )
       );
     } else {
       setEntries((prev) => {
-        const nextNo = prev.reduce((max, e) => Math.max(max, e.no), 0) + 1;
         const newEntry: DispatchEntry = {
           id: `disp-${Date.now()}`,
-          no: nextNo,
+          no: prev.length + 1,
           ...data,
         };
-        return [...prev, newEntry];
+        return renumberDispatchesByMonth([...prev, newEntry]);
       });
     }
     setEditingEntry(null);
   };
 
   const handleDeleteEntry = (id: string) => {
-    setEntries((prev) => prev.filter((item) => item.id !== id));
+    setEntries((prev) => renumberDispatchesByMonth(prev.filter((item) => item.id !== id)));
   };
 
   const handleUpdateConfirmedTonnage = (id: string, confirmed: string, noteAppend?: string) => {
@@ -173,7 +178,7 @@ export default function App() {
         if (item.id !== id) return item;
         return {
           ...item,
-          confirmedTonnage: `합차(NO.${anchorEntry.no})`,
+          confirmedTonnage: formatConsolidatedTonnage(item, anchorEntry),
           notes: combinedNote,
         };
       })
@@ -181,7 +186,7 @@ export default function App() {
   };
 
   const handleResetSamples = () => {
-    setEntries(INITIAL_DISPATCHES);
+    setEntries(renumberDispatchesByMonth(INITIAL_DISPATCHES));
     setConfirmReset(false);
   };
 

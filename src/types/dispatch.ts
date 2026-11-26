@@ -59,6 +59,7 @@ export interface DispatchEntry {
   destination: string;      // 도착지
   requestedTonnage: string;
   requestedBodyType: string;
+  vehicleCount?: number;
   confirmedTonnage: string; // e.g. '3.5톤 윙', '합차(NO.1)', '1톤 카고', or '검증대기'
   loadingMethod: string;
   isUrgentException?: boolean;

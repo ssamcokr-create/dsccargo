@@ -13,6 +13,9 @@ import { TONNAGE_ORDER } from '../data/standards';
 import { DispatchEntry, OverlapAnalysis } from '../types/dispatch';
 import {
   calculateRecommendedTonnage,
+  doesConsolidatedMatchAnchor,
+  formatDispatchMonthLabel,
+  formatMonthlyNo,
   formatShortTonnage,
   getCombinedLoadCheck,
   validateDispatchRequest,
@@ -40,6 +43,9 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
   onOpenKakaoCopy,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [originFilter, setOriginFilter] = useState('');
+  const [destinationFilter, setDestinationFilter] = useState('');
+  const [itemNameFilter, setItemNameFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('전체');
   const [statusFilter, setStatusFilter] = useState<FilterMode>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -70,6 +76,10 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const oq = originFilter.trim().toLowerCase();
+    const dq = destinationFilter.trim().toLowerCase();
+    const iq = itemNameFilter.trim().toLowerCase();
+
     return enriched.filter(({ entry, overlap, needsReview }) => {
       if (categoryFilter !== '전체' && entry.itemCategory !== categoryFilter) {
         return false;
@@ -79,6 +89,9 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
       if (statusFilter === 'normal' && (needsReview || entry.confirmedTonnage.startsWith('합차'))) {
         return false;
       }
+      if (oq && !entry.origin.toLowerCase().includes(oq)) return false;
+      if (dq && !entry.destination.toLowerCase().includes(dq)) return false;
+      if (iq && !entry.itemName.toLowerCase().includes(iq)) return false;
       if (!q) return true;
       const haystack = [
         entry.requester,
@@ -94,7 +107,15 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [enriched, searchQuery, categoryFilter, statusFilter]);
+  }, [
+    enriched,
+    searchQuery,
+    originFilter,
+    destinationFilter,
+    itemNameFilter,
+    categoryFilter,
+    statusFilter,
+  ]);
 
   const selectedItem = useMemo(
     () => enriched.find((item) => item.entry.id === selectedId) || null,
@@ -104,65 +125,120 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
   return (
     <div className="space-y-4">
       {/* Filter & Search Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white border border-slate-200 rounded-lg px-3.5 sm:px-4 py-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md overflow-x-auto max-w-full">
-            {(
-              [
-                { id: 'all', label: `전체 (${entries.length})` },
-                {
-                  id: 'action_needed',
-                  label: `검증·합차 필요 (${enriched.filter((x) => x.needsReview).length})`,
-                },
-                {
-                  id: 'consolidated',
-                  label: `합차완료 (${enriched.filter((x) => x.entry.confirmedTonnage.startsWith('합차')).length})`,
-                },
-                {
-                  id: 'normal',
-                  label: `정상 확정`,
-                },
-              ] as Array<{ id: FilterMode; label: string }>
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setStatusFilter(tab.id)}
-                className={`px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                  statusFilter === tab.id
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+      <div className="bg-white border border-slate-200 rounded-lg px-3.5 sm:px-4 py-3 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md overflow-x-auto max-w-full">
+              {(
+                [
+                  { id: 'all', label: `전체 (${entries.length})` },
+                  {
+                    id: 'action_needed',
+                    label: `검증·합차 필요 (${enriched.filter((x) => x.needsReview).length})`,
+                  },
+                  {
+                    id: 'consolidated',
+                    label: `합차완료 (${enriched.filter((x) => x.entry.confirmedTonnage.startsWith('합차')).length})`,
+                  },
+                  {
+                    id: 'normal',
+                    label: `정상 확정`,
+                  },
+                ] as Array<{ id: FilterMode; label: string }>
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setStatusFilter(tab.id)}
+                  className={`px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                    statusFilter === tab.id
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              aria-label="품목구분 필터"
+              className="h-9 sm:h-8 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-800/20 focus:border-blue-800"
+            >
+              <option value="전체">품목구분: 전체</option>
+              <option value="부품">부품</option>
+              <option value="용접지그">용접지그</option>
+              <option value="혼적">혼적</option>
+              <option value="설비">설비</option>
+              <option value="기타">기타</option>
+            </select>
           </div>
 
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="품목구분 필터"
-            className="h-9 sm:h-8 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-800/20 focus:border-blue-800"
-          >
-            <option value="전체">품목구분: 전체</option>
-            <option value="부품">부품</option>
-            <option value="용접지그">용접지그</option>
-            <option value="혼적">혼적</option>
-            <option value="설비">설비</option>
-            <option value="기타">기타</option>
-          </select>
+          <div className="relative w-full lg:w-72">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="전체 통합 검색 (요청자, 경유지, 비고...)"
+              className="w-full h-9 pl-9 pr-3 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-800/20 focus:border-blue-800"
+            />
+          </div>
         </div>
 
-        <div className="relative w-full lg:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="요청자, 품명, 출발·도착지, 비고 검색..."
-            className="w-full h-9 pl-9 pr-3 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-800/20 focus:border-blue-800"
-          />
+        {/* Instant Filter Inputs: 상차지 / 하차지 / 품목명 */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-12 gap-2 pt-2.5 border-t border-slate-100">
+          <div className="lg:col-span-3 relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={originFilter}
+              onChange={(e) => setOriginFilter(e.target.value)}
+              aria-label="상차지 즉시 필터"
+              placeholder="상차지(출발지) 검색..."
+              className="w-full h-8 pl-8 pr-2.5 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-800/20 focus:border-blue-800"
+            />
+          </div>
+          <div className="lg:col-span-3 relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={destinationFilter}
+              onChange={(e) => setDestinationFilter(e.target.value)}
+              aria-label="하차지 즉시 필터"
+              placeholder="하차지(도착지) 검색..."
+              className="w-full h-8 pl-8 pr-2.5 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-800/20 focus:border-blue-800"
+            />
+          </div>
+          <div className="lg:col-span-5 relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={itemNameFilter}
+              onChange={(e) => setItemNameFilter(e.target.value)}
+              aria-label="품목명 즉시 필터"
+              placeholder="품목명(사용내역) 검색..."
+              className="w-full h-8 pl-8 pr-2.5 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-800/20 focus:border-blue-800"
+            />
+          </div>
+          <div className="lg:col-span-1 flex items-center justify-end">
+            {(originFilter || destinationFilter || itemNameFilter || searchQuery) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOriginFilter('');
+                  setDestinationFilter('');
+                  setItemNameFilter('');
+                  setSearchQuery('');
+                }}
+                className="w-full h-8 px-2.5 text-xs font-medium rounded-md border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors whitespace-nowrap"
+              >
+                초기화
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -203,7 +279,9 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
                 {/* Card Top Header */}
                 <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 bg-[#1e3a8a] text-white">
                   <div className="flex items-center gap-2 text-xs font-mono-tabular min-w-0">
-                    <span className="font-bold">NO.{entry.no}</span>
+                    <span className="font-bold">
+                      {formatDispatchMonthLabel(entry)} · NO.{entry.no}
+                    </span>
                     <span className="text-blue-200" aria-hidden="true">·</span>
                     <span className="font-semibold whitespace-nowrap">상차 {entry.loadingDate}</span>
                   </div>
@@ -268,7 +346,7 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
                   {/* Tonnage Comparison Grid */}
                   <div className="grid grid-cols-3 gap-2 items-center">
                     <div>
-                      <div className="text-[11px] text-slate-500">요청톤수</div>
+                      <div className="text-[11px] text-slate-500">요청톤수 · 대수</div>
                       <div
                         className={`mt-0.5 ${
                           hasError
@@ -278,7 +356,7 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
                               : 'text-slate-700 font-medium'
                         }`}
                       >
-                        {reqShort}
+                        {reqShort} · {entry.vehicleCount ?? 1}대
                       </div>
                     </div>
                     <div>
@@ -418,6 +496,9 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
                   요청톤수
                 </th>
                 <th className="py-2.5 px-2.5 font-semibold text-center whitespace-nowrap border-r border-blue-800/60">
+                  차량대수
+                </th>
+                <th className="py-2.5 px-2.5 font-semibold text-center whitespace-nowrap border-r border-blue-800/60">
                   권장톤수<span className="block text-[10px] font-normal text-blue-200">(자동산출)</span>
                 </th>
                 <th className="py-2.5 px-2.5 font-semibold text-center whitespace-nowrap border-r border-blue-800/60">
@@ -437,7 +518,7 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
             <tbody className="divide-y divide-slate-200">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="py-12 text-center text-slate-500">
+                  <td colSpan={19} className="py-12 text-center text-slate-500">
                     조건에 해당하는 배차 내역이 없습니다. 검색어나 필터를 초기화해 보세요.
                   </td>
                 </tr>
@@ -474,8 +555,11 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
                           : 'hover:bg-slate-50/90'
                       }`}
                     >
-                      <td className="py-2.5 px-2.5 text-center font-mono-tabular font-semibold text-slate-700 border-r border-slate-100">
-                        {entry.no}
+                      <td className="py-2.5 px-2.5 text-center font-mono-tabular border-r border-slate-100 whitespace-nowrap">
+                        <span className="block text-[10px] font-normal text-slate-400 leading-tight">
+                          {formatDispatchMonthLabel(entry)}
+                        </span>
+                        <span className="font-semibold text-slate-700">{entry.no}</span>
                       </td>
                       <td className="py-2.5 px-2.5 text-center font-mono-tabular text-slate-600 whitespace-nowrap border-r border-slate-100">
                         {entry.requestDate}
@@ -522,6 +606,9 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
                         >
                           {reqShort}
                         </span>
+                      </td>
+                      <td className="py-2.5 px-2.5 text-center font-mono-tabular font-medium text-slate-900 whitespace-nowrap border-r border-slate-100">
+                        {entry.vehicleCount ?? 1}대
                       </td>
                       <td className="py-2.5 px-2.5 text-center whitespace-nowrap font-bold text-blue-800 border-r border-slate-100">
                         {recommendation.recommendedTonnage}
@@ -617,7 +704,7 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
             <div className="space-y-2 flex-1">
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <span className="font-semibold text-slate-900 text-sm">
-                  NO.{selectedItem.entry.no} {selectedItem.entry.itemName}
+                  {formatMonthlyNo(selectedItem.entry)} {selectedItem.entry.itemName}
                 </span>
                 <span aria-hidden="true">·</span>
                 <span>{selectedItem.entry.requester}</span>
@@ -662,8 +749,8 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
                     if (!anchor) return null;
                     const combo = getCombinedLoadCheck(selectedItem.entry, anchor);
                     const alreadyMerged =
-                      selectedItem.entry.confirmedTonnage === `합차(NO.${anchor.no})` ||
-                      anchor.confirmedTonnage === `합차(NO.${selectedItem.entry.no})`;
+                      doesConsolidatedMatchAnchor(selectedItem.entry, anchor) ||
+                      doesConsolidatedMatchAnchor(anchor, selectedItem.entry);
 
                     return (
                       <div
@@ -691,13 +778,13 @@ export const DispatchLedgerTable: React.FC<DispatchLedgerTableProps> = ({
                               onConsolidate(
                                 selectedItem.entry.id,
                                 anchor,
-                                `${anchor.loadingDate.slice(5).replace('-', '/')} NO.${anchor.no} 차량과 동일 노선 → 일정 조율 합차 (${combo.recommendedCombinedTonnage} 혼적 검토)`
+                                `${anchor.loadingDate.slice(5).replace('-', '/')} ${formatDispatchMonthLabel(anchor)}-NO.${anchor.no} 차량과 동일 노선 → 일정 조율 합차 (${combo.recommendedCombinedTonnage} 혼적 검토)`
                               )
                             }
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-blue-900 text-white hover:bg-blue-800 transition-colors whitespace-nowrap shrink-0"
                           >
                             <GitMerge className="w-3.5 h-3.5" />
-                            NO.{anchor.no}과 합차 적용
+                            {formatDispatchMonthLabel(anchor)}-NO.{anchor.no}과 합차 적용
                           </button>
                         )}
                       </div>

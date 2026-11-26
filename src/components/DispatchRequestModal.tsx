@@ -70,6 +70,7 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
   const [destination, setDestination] = useState('NKS');
   const [requestedTonnage, setRequestedTonnage] = useState<string>('1톤');
   const [isCustomTonnage, setIsCustomTonnage] = useState<boolean>(false);
+  const [vehicleCount, setVehicleCount] = useState<number>(1);
   const [requestedBodyType, setRequestedBodyType] = useState<string>('카고');
   const [isCustomBodyType, setIsCustomBodyType] = useState<boolean>(false);
   const [confirmedTonnage, setConfirmedTonnage] = useState<string>('검증대기');
@@ -115,6 +116,7 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
       setDestination(editingEntry.destination);
       setRequestedTonnage(editingEntry.requestedTonnage);
       setIsCustomTonnage(!TONNAGE_ORDER.includes(editingEntry.requestedTonnage as TonnageClass));
+      setVehicleCount(editingEntry.vehicleCount ?? 1);
       setRequestedBodyType(editingEntry.requestedBodyType);
       setIsCustomBodyType(!BODY_TYPE_PRESETS.includes(editingEntry.requestedBodyType as BodyType));
       setConfirmedTonnage(editingEntry.confirmedTonnage);
@@ -146,6 +148,7 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
       setDestination('NKS');
       setRequestedTonnage('1톤');
       setIsCustomTonnage(false);
+      setVehicleCount(1);
       setRequestedBodyType('카고');
       setIsCustomBodyType(false);
       setConfirmedTonnage('검증대기');
@@ -315,6 +318,7 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
       totalWeightKg,
       requestedTonnage,
       requestedBodyType,
+      vehicleCount,
       loadingMethod,
       notes,
     });
@@ -354,6 +358,7 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
         destination: destination.trim() || '-',
         requestedTonnage: requestedTonnage.trim() || '1톤',
         requestedBodyType: requestedBodyType.trim() || '카고',
+        vehicleCount: Math.max(1, Number(vehicleCount) || 1),
         confirmedTonnage: confirmedTonnage.trim() || '검증대기',
         loadingMethod: loadingMethod.trim() || '지게차',
         isUrgentException,
@@ -759,8 +764,8 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
                   )}
                 </div>
 
-                {/* Section 5: Tonnage & Body Type Selection */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Section 5: Tonnage, Vehicle Count & Body Type Selection */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">요청 톤수</label>
                     <select
@@ -796,6 +801,18 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
                         className="mt-1.5 w-full h-9 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-none focus:border-blue-800"
                       />
                     )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">차량대수 (대)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      required
+                      value={vehicleCount}
+                      onChange={(e) => setVehicleCount(Number(e.target.value))}
+                      className="w-full h-9 px-2.5 text-xs font-mono-tabular text-right rounded-md border border-slate-300 focus:outline-none focus:border-blue-800"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">요청 차종</label>
