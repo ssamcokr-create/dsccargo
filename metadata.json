@@ -1,0 +1,8 @@
+{
+  "name": "선행기술팀 용차 배차 관리대장",
+  "description": "1100×1100 PLT 및 용접지그 표준 적재 검증, ±1일 동일 노선 중복/합차 자동 감지, 카카오톡 배차 요청 양식 생성 및 SOP 운영 플랫폼",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
