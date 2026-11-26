@@ -48,7 +48,7 @@ export interface DispatchEntry {
   unloadingTime?: string;   // e.g. '오후 02시'
   requester: string;        // e.g. '이찬호 매니저'
   contact?: string;         // 연락처
-  itemCategory: ItemCategory;
+  itemCategory: string;
   itemName: string;         // 사용내역(품명)
   pltCount: number;         // PLT수량 (1100각)
   jigSpec: string;          // 설비·지그규격 (장×폭×고 mm) or '-'
@@ -58,9 +58,9 @@ export interface DispatchEntry {
   waypoints: string;        // 경유지 or '-'
   destination: string;      // 도착지
   requestedTonnage: string;
-  requestedBodyType: BodyType;
+  requestedBodyType: string;
   confirmedTonnage: string; // e.g. '3.5톤 윙', '합차(NO.1)', '1톤 카고', or '검증대기'
-  loadingMethod: LoadingMethod;
+  loadingMethod: string;
   isUrgentException?: boolean;
   urgentApprover?: string;
   notes: string;            // 비고(절감사유/특이사항)

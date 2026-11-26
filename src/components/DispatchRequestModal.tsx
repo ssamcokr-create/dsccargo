@@ -25,6 +25,10 @@ interface DispatchRequestModalProps {
   onSave: (data: Omit<DispatchEntry, 'id' | 'no'>, existingId?: string) => void;
 }
 
+const ITEM_CATEGORY_PRESETS: ItemCategory[] = ['부품', '용접지그', '혼적', '설비', '기타'];
+const LOADING_METHOD_PRESETS: LoadingMethod[] = ['지게차', '호이스트', '크레인', '수작업'];
+const BODY_TYPE_PRESETS: BodyType[] = ['카고', '윙바디'];
+
 const getTodayIso = () => new Date().toISOString().slice(0, 10);
 const getTomorrowIso = () => {
   const d = new Date();
@@ -51,7 +55,8 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
   const [unloadingTime, setUnloadingTime] = useState('오후 02시');
   const [requester, setRequester] = useState('');
   const [contact, setContact] = useState('');
-  const [itemCategory, setItemCategory] = useState<ItemCategory>('부품');
+  const [itemCategory, setItemCategory] = useState<string>('부품');
+  const [isCustomCategory, setIsCustomCategory] = useState<boolean>(false);
   const [itemName, setItemName] = useState('');
   const [pltCount, setPltCount] = useState<number>(2);
   const [hasJig, setHasJig] = useState<boolean>(false);
@@ -65,9 +70,11 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
   const [destination, setDestination] = useState('NKS');
   const [requestedTonnage, setRequestedTonnage] = useState<string>('1톤');
   const [isCustomTonnage, setIsCustomTonnage] = useState<boolean>(false);
-  const [requestedBodyType, setRequestedBodyType] = useState<BodyType>('카고');
+  const [requestedBodyType, setRequestedBodyType] = useState<string>('카고');
+  const [isCustomBodyType, setIsCustomBodyType] = useState<boolean>(false);
   const [confirmedTonnage, setConfirmedTonnage] = useState<string>('검증대기');
-  const [loadingMethod, setLoadingMethod] = useState<LoadingMethod>('지게차');
+  const [loadingMethod, setLoadingMethod] = useState<string>('지게차');
+  const [isCustomLoadingMethod, setIsCustomLoadingMethod] = useState<boolean>(false);
   const [isUrgentException, setIsUrgentException] = useState(false);
   const [urgentApprover, setUrgentApprover] = useState('');
   const [notes, setNotes] = useState('');
@@ -87,6 +94,7 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
       setRequester(editingEntry.requester);
       setContact(editingEntry.contact || '');
       setItemCategory(editingEntry.itemCategory);
+      setIsCustomCategory(!ITEM_CATEGORY_PRESETS.includes(editingEntry.itemCategory as ItemCategory));
       setItemName(editingEntry.itemName);
       setPltCount(editingEntry.pltCount);
 
@@ -108,8 +116,10 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
       setRequestedTonnage(editingEntry.requestedTonnage);
       setIsCustomTonnage(!TONNAGE_ORDER.includes(editingEntry.requestedTonnage as TonnageClass));
       setRequestedBodyType(editingEntry.requestedBodyType);
+      setIsCustomBodyType(!BODY_TYPE_PRESETS.includes(editingEntry.requestedBodyType as BodyType));
       setConfirmedTonnage(editingEntry.confirmedTonnage);
       setLoadingMethod(editingEntry.loadingMethod);
+      setIsCustomLoadingMethod(!LOADING_METHOD_PRESETS.includes(editingEntry.loadingMethod as LoadingMethod));
       setIsUrgentException(Boolean(editingEntry.isUrgentException));
       setUrgentApprover(editingEntry.urgentApprover || '');
       setNotes(editingEntry.notes);
@@ -122,6 +132,7 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
       setRequester('');
       setContact('');
       setItemCategory('부품');
+      setIsCustomCategory(false);
       setItemName('');
       setPltCount(2);
       setHasJig(false);
@@ -136,8 +147,10 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
       setRequestedTonnage('1톤');
       setIsCustomTonnage(false);
       setRequestedBodyType('카고');
+      setIsCustomBodyType(false);
       setConfirmedTonnage('검증대기');
       setLoadingMethod('지게차');
+      setIsCustomLoadingMethod(false);
       setIsUrgentException(false);
       setUrgentApprover('');
       setNotes('');
@@ -245,7 +258,10 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
     if (parsed.origin) setOrigin(parsed.origin);
     if (parsed.waypoints) setWaypoints(parsed.waypoints);
     if (parsed.destination) setDestination(parsed.destination);
-    if (parsed.itemCategory) setItemCategory(parsed.itemCategory);
+    if (parsed.itemCategory) {
+      setItemCategory(parsed.itemCategory);
+      setIsCustomCategory(!ITEM_CATEGORY_PRESETS.includes(parsed.itemCategory as ItemCategory));
+    }
     if (parsed.itemName) setItemName(parsed.itemName);
     if (typeof parsed.pltCount === 'number') setPltCount(parsed.pltCount);
     if (parsed.jigSpec && parsed.jigSpec !== '-') {
@@ -267,8 +283,14 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
       setRequestedTonnage(parsed.requestedTonnage);
       setIsCustomTonnage(!TONNAGE_ORDER.includes(parsed.requestedTonnage as TonnageClass));
     }
-    if (parsed.requestedBodyType) setRequestedBodyType(parsed.requestedBodyType);
-    if (parsed.loadingMethod) setLoadingMethod(parsed.loadingMethod);
+    if (parsed.requestedBodyType) {
+      setRequestedBodyType(parsed.requestedBodyType);
+      setIsCustomBodyType(!BODY_TYPE_PRESETS.includes(parsed.requestedBodyType as BodyType));
+    }
+    if (parsed.loadingMethod) {
+      setLoadingMethod(parsed.loadingMethod);
+      setIsCustomLoadingMethod(!LOADING_METHOD_PRESETS.includes(parsed.loadingMethod as LoadingMethod));
+    }
     if (parsed.notes) setNotes(parsed.notes);
 
     setParseFeedback('카카오톡 양식 항목이 입력 폼에 자동 반영되었습니다. 적재 검증 결과를 확인해 주세요.');
@@ -321,7 +343,7 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
         unloadingTime,
         requester: requester.trim() || '미지정',
         contact: contact.trim(),
-        itemCategory,
+        itemCategory: itemCategory.trim() || '기타',
         itemName: itemName.trim() || '품목 미입력',
         pltCount: Math.max(0, Number(pltCount) || 0),
         jigSpec: jigSpecString,
@@ -331,9 +353,9 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
         waypoints: waypoints.trim() || '-',
         destination: destination.trim() || '-',
         requestedTonnage: requestedTonnage.trim() || '1톤',
-        requestedBodyType,
+        requestedBodyType: requestedBodyType.trim() || '카고',
         confirmedTonnage: confirmedTonnage.trim() || '검증대기',
-        loadingMethod,
+        loadingMethod: loadingMethod.trim() || '지게차',
         isUrgentException,
         urgentApprover: urgentApprover.trim(),
         notes: finalNotes,
@@ -565,16 +587,38 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
                   <div className="sm:col-span-3">
                     <label className="block text-xs font-medium text-slate-700 mb-1">품목구분</label>
                     <select
-                      value={itemCategory}
-                      onChange={(e) => setItemCategory(e.target.value as ItemCategory)}
+                      value={isCustomCategory ? '__CUSTOM__' : itemCategory}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '__CUSTOM__') {
+                          setIsCustomCategory(true);
+                          if (ITEM_CATEGORY_PRESETS.includes(itemCategory as ItemCategory)) {
+                            setItemCategory('');
+                          }
+                        } else {
+                          setIsCustomCategory(false);
+                          setItemCategory(val);
+                        }
+                      }}
                       className="w-full h-9 px-2.5 text-xs rounded-md border border-slate-300 bg-white focus:outline-none focus:border-blue-800"
                     >
-                      <option value="부품">부품</option>
-                      <option value="용접지그">용접지그</option>
-                      <option value="혼적">혼적</option>
-                      <option value="설비">설비</option>
-                      <option value="기타">기타</option>
+                      {ITEM_CATEGORY_PRESETS.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                      <option value="__CUSTOM__">직접입력</option>
                     </select>
+                    {isCustomCategory && (
+                      <input
+                        type="text"
+                        required
+                        value={itemCategory}
+                        onChange={(e) => setItemCategory(e.target.value)}
+                        placeholder="예: 시작품, 금형, 반품"
+                        className="mt-1.5 w-full h-9 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-none focus:border-blue-800"
+                      />
+                    )}
                   </div>
                   <div className="sm:col-span-6">
                     <label className="block text-xs font-medium text-slate-700 mb-1">사용내역 (품명) *</label>
@@ -620,15 +664,37 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">상·하차 방식</label>
                       <select
-                        value={loadingMethod}
-                        onChange={(e) => setLoadingMethod(e.target.value as LoadingMethod)}
+                        value={isCustomLoadingMethod ? '__CUSTOM__' : loadingMethod}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__CUSTOM__') {
+                            setIsCustomLoadingMethod(true);
+                            if (LOADING_METHOD_PRESETS.includes(loadingMethod as LoadingMethod)) {
+                              setLoadingMethod('');
+                            }
+                          } else {
+                            setIsCustomLoadingMethod(false);
+                            setLoadingMethod(val);
+                          }
+                        }}
                         className="w-full h-9 px-2.5 text-xs rounded-md border border-slate-300 bg-white focus:outline-none focus:border-blue-800"
                       >
                         <option value="지게차">지게차</option>
                         <option value="호이스트">호이스트 (카고 필수)</option>
                         <option value="크레인">크레인 (카고 필수)</option>
                         <option value="수작업">수작업</option>
+                        <option value="__CUSTOM__">직접입력</option>
                       </select>
+                      {isCustomLoadingMethod && (
+                        <input
+                          type="text"
+                          required
+                          value={loadingMethod}
+                          onChange={(e) => setLoadingMethod(e.target.value)}
+                          placeholder="예: 리프트, 도크, 핸드자키"
+                          className="mt-1.5 w-full h-9 px-2.5 text-xs rounded-md border border-slate-300 bg-white focus:outline-none focus:border-blue-800"
+                        />
+                      )}
                     </div>
                     <div className="flex items-center h-9">
                       <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-800 cursor-pointer">
@@ -734,13 +800,35 @@ export const DispatchRequestModal: React.FC<DispatchRequestModalProps> = ({
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">요청 차종</label>
                     <select
-                      value={requestedBodyType}
-                      onChange={(e) => setRequestedBodyType(e.target.value as BodyType)}
+                      value={isCustomBodyType ? '__CUSTOM__' : requestedBodyType}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '__CUSTOM__') {
+                          setIsCustomBodyType(true);
+                          if (BODY_TYPE_PRESETS.includes(requestedBodyType as BodyType)) {
+                            setRequestedBodyType('');
+                          }
+                        } else {
+                          setIsCustomBodyType(false);
+                          setRequestedBodyType(val);
+                        }
+                      }}
                       className="w-full h-9 px-2.5 text-xs rounded-md border border-slate-300 bg-white focus:outline-none focus:border-blue-800"
                     >
                       <option value="카고">카고</option>
                       <option value="윙바디">윙바디</option>
+                      <option value="__CUSTOM__">직접입력</option>
                     </select>
+                    {isCustomBodyType && (
+                      <input
+                        type="text"
+                        required
+                        value={requestedBodyType}
+                        onChange={(e) => setRequestedBodyType(e.target.value)}
+                        placeholder="예: 탑차, 리프트, 무진동, 호루"
+                        className="mt-1.5 w-full h-9 px-2.5 text-xs rounded-md border border-slate-300 focus:outline-none focus:border-blue-800"
+                      />
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">

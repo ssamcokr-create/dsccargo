@@ -28,16 +28,16 @@ export function parseJigDimensions(spec: string): JigDimensions | null {
   };
 }
 
-export function formatShortTonnage(tonnage: string, bodyType: BodyType): string {
-  const shortBody = bodyType === '윙바디' ? '윙' : '카고';
-  return `${tonnage} ${shortBody}`;
+export function formatShortTonnage(tonnage: string, bodyType: string): string {
+  const shortBody = bodyType === '윙바디' ? '윙' : bodyType === '카고' ? '카고' : bodyType;
+  return `${tonnage} ${shortBody}`.trim();
 }
 
 export function calculateRecommendedTonnage(
   pltCount: number,
   jigSpec: string,
   totalWeightKg: number,
-  loadingMethod: LoadingMethod = '지게차',
+  loadingMethod: string = '지게차',
   itemName = '',
   jigQty = 1
 ): RecommendationResult {
@@ -48,7 +48,7 @@ export function calculateRecommendedTonnage(
   let suggestedBodyType: BodyType = '카고';
   let bodyReason = '부품·철구조물 기본 카고 원칙 적용';
 
-  if (loadingMethod === '호이스트' || loadingMethod === '크레인') {
+  if (/호이스트|크레인/.test(loadingMethod)) {
     suggestedBodyType = '카고';
     bodyReason = '호이스트·크레인 상차 시 카고(천막) 필수 지정 원칙';
   } else if (/센서|전동|전자|샘플|우천|습기/.test(itemName)) {
@@ -161,8 +161,8 @@ export function validateDispatchRequest(entry: {
   jigQty?: number;
   totalWeightKg: number;
   requestedTonnage: string;
-  requestedBodyType: BodyType;
-  loadingMethod: LoadingMethod;
+  requestedBodyType: string;
+  loadingMethod: string;
   loadingDate: string;
   requestDate: string;
   isUrgentException?: boolean;
@@ -214,7 +214,7 @@ export function validateDispatchRequest(entry: {
 
   // Rule 2: 호이스트·크레인 상차 시 카고(천막) 필수 지정
   if (
-    (entry.loadingMethod === '호이스트' || entry.loadingMethod === '크레인') &&
+    /호이스트|크레인/.test(entry.loadingMethod) &&
     entry.requestedBodyType === '윙바디'
   ) {
     issues.push({
